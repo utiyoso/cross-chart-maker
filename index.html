@@ -96,8 +96,8 @@ details[open]>summary{background:var(--pink-soft);margin-bottom:6px}
       うちよそ十字チャートメーカー
     </div>
     <span class="tag">十字チャートを作ってPNGに。画像は外部に送信されません。</span>
-    <button id="undo" title="Ctrl+Z">↩ 戻す</button>
-    <button id="redo" title="Ctrl+Shift+Z">↪ やり直し</button>
+    <button id="undo" title="Ctrl+Z">戻す</button>
+    <button id="redo" title="Ctrl+Shift+Z">やり直し</button>
     <button id="saveJson">作業を保存</button>
     <button id="loadJson">読み込み</button>
     <button id="reset" class="danger">新規</button>
@@ -563,12 +563,12 @@ function buildPanels(){
   baseIn.onchange=()=>{S.baseColor=baseIn.value;doGen(()=>genFromBase(S.baseColor))};
   const chips=h('div',{class:'chips'},MOODS.map(m=>h('button',{class:'chip',onclick:()=>{
     const hue=S.useBase?rgbToHsl(...hexToRgb(S.baseColor))[0]:null;doGen(()=>genMood(m,hue))}},m.n)));
-  side.append(section('bg','🎨 背景グラデーション',
+  side.append(section('bg','背景グラデーション',
     h('div',{class:'sub'},'ベースカラーから'),
-    h('div',{class:'row'},baseIn,h('span',{class:'hint',style:{margin:0}},'選ぶと自動生成'),h('button',{onclick:()=>doGen(()=>genFromBase(S.baseColor))},'🎲 もう一度')),
+    h('div',{class:'row'},baseIn,h('span',{class:'hint',style:{margin:0}},'選ぶと自動生成'),h('button',{onclick:()=>doGen(()=>genFromBase(S.baseColor))},'もう一度')),
     h('div',{class:'sub'},'雰囲気から'),chips,
     F('check','ベース色相を反映',S,'useBase'),
-    h('div',{class:'row'},h('button',{onclick:()=>doGen(genRandom)},'🎲 おまかせ（完全ランダム）')),
+    h('div',{class:'row'},h('button',{onclick:()=>doGen(genRandom)},'おまかせ（完全ランダム）')),
     h('div',{class:'sub'},'手動で微調整'),
     F('color','色 1',S.bg.stops,0,{},rerender),F('color','色 2',S.bg.stops,1,{},rerender),F('color','色 3',S.bg.stops,2,{},rerender),
     F('range','角度',S.bg,'angle',{min:0,max:360,fmt:v=>v+'°'},rerender),
@@ -577,7 +577,7 @@ function buildPanels(){
   ));
   /* タイトル・ラベル */
   const T=S.theme;
-  side.append(section('text','🔤 タイトル・軸ラベル',
+  side.append(section('text','タイトル・軸ラベル',
     F('text','タイトル',S,'title',{},rerender),
     F('text','上',S.labels,'top',{},rerender),F('text','下',S.labels,'bottom',{},rerender),
     F('text','左（縦書き）',S.labels,'left',{},rerender),F('text','右（縦書き）',S.labels,'right',{},rerender),
@@ -593,18 +593,18 @@ function buildPanels(){
     h('div',{class:'hint'},'右下の「うちよそ研究所」表記は固定です。')
   ));
   /* 追加 */
-  side.append(section('add','➕ 追加',
+  side.append(section('add','追加',
     h('div',{class:'row'},
-      h('button',{onclick:()=>$('#faceFile').click()},'🖼 顔アイコン（画像）'),
+      h('button',{onclick:()=>$('#faceFile').click()},'顔アイコン（画像）'),
       h('button',{onclick:()=>addItem(newFace({label:'キャラA'}))},'仮アイコン'),
-      h('button',{onclick:()=>addItem(newText())},'📝 テキスト'),
-      h('button',{onclick:()=>addItem(newBubble())},'💬 フキダシ'),
+      h('button',{onclick:()=>addItem(newText())},'テキスト'),
+      h('button',{onclick:()=>addItem(newBubble())},'フキダシ'),
       h('button',{onclick:addQuadTexts},'四象限にテキスト枠')),
     h('div',{class:'hint'},'画像は選択のほか、ボードへのドラッグ＆ドロップ・貼り付け(Ctrl+V)でも追加できます。')
   ));
   /* 選択中 */
-  side.append(section('insp','🎯 選択中のアイテム',h('div',{id:'inspector'})));
-  side.append(section('help','📖 使い方・メモ',h('div',{class:'hint'},
+  side.append(section('insp','選択中のアイテム',h('div',{id:'inspector'})));
+  side.append(section('help','使い方・メモ',h('div',{class:'hint'},
     'ドラッグで移動／右下の○で拡大縮小／上の●で回転／フキダシの黄色い○でしっぽの向き。',h('br'),
     'Delete:削除　Ctrl+D:複製　矢印キー:微調整(Shiftで10px)　Ctrl+Z:戻す',h('br'),
     '「作業を保存」は画像ごとJSONに保存します。ブラウザにも自動保存されます。',h('br'),
