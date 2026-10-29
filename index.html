@@ -481,19 +481,19 @@ function order(id,dir){
 const jit=()=>({cx:Math.round(500+rnd(-130,130)),cy:Math.round(700+rnd(-160,160))});
 function addItem(o){pushUndo();const it={id:S.nid++,rot:0,...jit(),...o};S.items.push(it);sel=it.id;renderItems();renderInspector();sched();return it}
 const TEXT_PRESETS={
+  outline:{n:'白フチ・黒文字',color:'#222222',bg:'#000000',bgOp:0,ol:'#ffffff',olw:6,radius:0,bold:true},
+  outlineW:{n:'黒フチ・白文字',color:'#ffffff',bg:'#000000',bgOp:0,ol:'#222222',olw:6,radius:0,bold:true},
   dark:{n:'黒板＋白文字',color:'#ffffff',bg:'#000000',bgOp:.62,ol:'#000000',olw:0,radius:10,bold:true},
-  plain:{n:'文字のみ',color:'#222222',bg:'#ffffff',bgOp:0,ol:'#ffffff',olw:0,radius:0,bold:true},
-  outline:{n:'縁取り白文字',color:'#ffffff',bg:'#000000',bgOp:0,ol:'#222222',olw:5,radius:0,bold:true},
   note:{n:'付箋',color:'#3a3320',bg:'#fff3a8',bgOp:1,ol:'#ffffff',olw:0,radius:6,bold:false},
   red:{n:'赤い見出し',color:'#e02a2a',bg:'#ffffff',bgOp:0,ol:'#ffffff',olw:6,radius:0,bold:true}
 };
-const newText=o=>({type:'text',w:300,text:'ここに説明を入力',font:'gothic',size:28,align:'center',pad:10,...TEXT_PRESETS.dark,...o});
+const newText=o=>({type:'text',w:300,text:'ここに説明を入力',font:'gothic',size:32,align:'center',pad:10,...TEXT_PRESETS.outline,...o});
 const newBubble=o=>({type:'bubble',w:260,h:130,text:'セリフ',shape:'oval',tail:'tri',tx:-50,ty:110,font:'handpop',size:30,bold:false,color:'#222222',bg:'#ffffff',bc:'#222222',bw:4,...o});
 const PH=['#f4a6c0','#9fd3f5','#b9e3a5','#f7c98b','#c9b3f0','#f59c9c'];
 const newFace=o=>({type:'face',w:170,h:170,img:null,shape:'circle',zoom:1,ox:0,oy:0,bw:6,bc:'#ffffff',shadow:true,label:'',lsize:22,ph:PH[Math.floor(rnd(0,PH.length))],...o});
 function addQuadTexts(){
   pushUndo();
-  [[286,493],[714,493],[286,920],[714,920]].forEach(([x,y])=>{const it={id:S.nid++,rot:0,cx:x,cy:y,...newText({w:300,size:26})};S.items.push(it);sel=it.id});
+  [[286,493],[714,493],[286,920],[714,920]].forEach(([x,y])=>{const it={id:S.nid++,rot:0,cx:x,cy:y,...newText({w:300,size:26,...TEXT_PRESETS.dark})};S.items.push(it);sel=it.id});
   renderItems();renderInspector();sched();
 }
 
