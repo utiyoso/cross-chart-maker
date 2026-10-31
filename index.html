@@ -87,6 +87,9 @@ details[open]>summary{background:var(--pink-soft);margin-bottom:6px}
 .tpl img{width:100%;border-radius:8px;display:block;background:var(--pink-pale)}
 .tpl .tn{font-size:12.5px;font-weight:700;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tpl .chip{padding:0 9px;font-size:12px}
+.ovl{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(74,59,66,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.ovl .dlg{background:#fff;border:2px solid var(--line);border-radius:16px;box-shadow:0 8px 0 var(--pink-soft);padding:16px;max-width:420px;width:100%;max-height:92vh;overflow:auto;text-align:center}
+.ovl .dlg img{max-width:100%;max-height:52vh;border-radius:10px;border:2px solid var(--line);-webkit-touch-callout:default;user-select:auto}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--pink-deep);color:#fff;font-weight:700;padding:8px 20px;border-radius:999px;box-shadow:0 4px 0 #b63d63;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 #toast.on{opacity:1}
 @media(max-width:1150px){.tag{display:none}}
@@ -809,14 +812,33 @@ async function renderCanvas(scale){
     return await html2canvas(clone,{scale,backgroundColor:null,useCORS:true,logging:false,width:BW,height:BH,windowWidth:BW,windowHeight:BH,scrollX:0,scrollY:0});
   }finally{wrap&&wrap.remove();sel=prevSel;renderItems()}
 }
+const IS_IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+/* iOS：共有シートの「画像を保存」で写真に入れる。ボタンは新しいタップから呼ぶ（Safariの制限）。長押し保存も案内 */
+function showSaveDialog(blob){
+  const url=URL.createObjectURL(blob),file=new File([blob],'uchiyoso-cross.png',{type:'image/png'});
+  const close=()=>{ov.remove();URL.revokeObjectURL(url)};
+  const canShare=!!(navigator.canShare&&navigator.canShare({files:[file]}));
+  const ov=h('div',{class:'ovl',onclick:e=>{if(e.target===ov)close()}},
+    h('div',{class:'dlg'},
+      h('div',{style:{fontWeight:700,marginBottom:'8px'}},'画像ができました'),
+      h('img',{src:url,alt:'書き出した画像'}),
+      canShare?h('button',{class:'primary',style:{margin:'12px 0 4px'},onclick:async()=>{
+        try{await navigator.share({files:[file]})}catch(e){if(e.name!=='AbortError')toast('共有できませんでした。画像を長押ししてください')}
+      }},'写真に保存（共有メニューを開く）'):null,
+      h('div',{class:'hint'},canShare?'共有メニューで「画像を保存」を選ぶと、写真アプリに入ります。':'画像を長押しして「“写真”に追加」を選んでください。'),
+      h('div',{class:'hint'},'うまく開かないときは、画像を長押ししても保存できます。'),
+      h('button',{onclick:close},'閉じる')));
+  document.body.append(ov);
+}
 async function exportPng(){
   const btn=$('#exportPng');
   if(typeof html2canvas==='undefined'){toast('書き出しライブラリを読み込めません（オンライン環境が必要です）');return}
   btn.disabled=true;btn.textContent='書き出し中…';
   try{
     const canvas=await renderCanvas(2);
-    await new Promise(r=>canvas.toBlob(b=>{download(b,'uchiyoso-cross.png');r()},'image/png'));
-    toast('PNGを書き出しました（2000×2400）');
+    const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+    if(IS_IOS)showSaveDialog(blob);
+    else{download(blob,'uchiyoso-cross.png');toast('PNGを書き出しました（2000×2400）')}
   }catch(err){console.error(err);toast('書き出しに失敗しました')}
   finally{btn.disabled=false;btn.textContent='PNGで書き出し'}
 }
