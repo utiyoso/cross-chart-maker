@@ -82,6 +82,11 @@ details[open]>summary{background:var(--pink-soft);margin-bottom:6px}
 .chip:hover{border-color:var(--pink);background:#fff}
 .hint{color:var(--muted);font-size:12.5px;line-height:1.75;margin-top:6px;margin-bottom:6px}
 .sub{display:inline-block;font-size:12px;font-weight:700;color:var(--pink-deep);background:var(--pink-soft);border-radius:999px;padding:0 12px;margin-top:12px;margin-bottom:2px}
+.tpls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;margin-bottom:8px}
+.tpl{border:2px solid var(--line);border-radius:12px;padding:6px;background:#fff}
+.tpl img{width:100%;border-radius:8px;display:block;background:var(--pink-pale)}
+.tpl .tn{font-size:12.5px;font-weight:700;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpl .chip{padding:0 9px;font-size:12px}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--pink-deep);color:#fff;font-weight:700;padding:8px 20px;border-radius:999px;box-shadow:0 4px 0 #b63d63;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 #toast.on{opacity:1}
 @media(max-width:1150px){.tag{display:none}}
@@ -191,7 +196,7 @@ const IMGS={};           // 画像ストア id -> {url,w,h}
 let S;                   // 作業状態（履歴対象）
 let sel=null;            // 選択中アイテムID
 let scale=1;
-const OPEN={bg:true,text:false,add:true,insp:true,help:false};
+const OPEN={tpl:true,bg:true,text:false,add:true,insp:true,help:false};
 
 function defaultState(){return{
   title:'デート中のテンション',
@@ -224,7 +229,7 @@ function updateBar(){$('#undo').disabled=!undoStack.length;$('#redo').disabled=!
 let saveTimer;
 function sched(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem('uchiyoso-cross',JSON.stringify(pack()))}catch(e){}},500)}
 function pack(){const used={};S.items.forEach(i=>{if(i.img&&IMGS[i.img])used[i.img]=IMGS[i.img]});return{v:1,S,imgs:used}}
-function unpack(d){if(!d||!d.S)throw new Error('bad');Object.assign(IMGS,d.imgs||{});S=Object.assign(defaultState(),d.S);S.theme=Object.assign(defaultState().theme,d.S.theme)}
+function unpack(d){if(!d||!d.S)throw new Error('bad');Object.assign(IMGS,d.imgs||{});S=Object.assign(defaultState(),d.S);S.items=(S.items||[]).map(i=>i.type==='face'?{keyOn:false,keyColor:'#ffffff',keyTol:25,...i}:i);S.theme=Object.assign(defaultState().theme,d.S.theme)}
 
 /* ============ 背景生成 ============ */
 const MOODS=[
@@ -323,13 +328,55 @@ const NS='http://www.w3.org/2000/svg';
 const itemEls=new Map();
 const byId=id=>S.items.find(i=>i.id===id);
 
+/* 背景を透明にする：外周から繋がっている「キーの色」を透明化（目の白など内側は残す） */
+const KEYC={},KEYP=new Map();
+const decodeImg=url=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});
+async function makeKeyed(id,color,tol){
+  const im=IMGS[id],el=await decodeImg(im.url),w=im.w,hh=im.h;
+  const c=document.createElement('canvas');c.width=w;c.height=hh;const x=c.getContext('2d');x.drawImage(el,0,0,w,hh);
+  const d=x.getImageData(0,0,w,hh),px=d.data,[kr,kg,kb]=hexToRgb(color),th=tol*3;
+  const dist=i=>px[i+3]<10?0:Math.hypot(px[i]-kr,px[i+1]-kg,px[i+2]-kb);
+  const seen=new Uint8Array(w*hh),st=[];
+  const push=(X,Y)=>{if(X<0||Y<0||X>=w||Y>=hh)return;const p=Y*w+X;if(seen[p]||dist(p*4)>th)return;seen[p]=1;st.push(p)};
+  for(let X=0;X<w;X++){push(X,0);push(X,hh-1)}
+  for(let Y=0;Y<hh;Y++){push(0,Y);push(w-1,Y)}
+  while(st.length){const p=st.pop(),X=p%w,Y=(p/w)|0;push(X+1,Y);push(X-1,Y);push(X,Y+1);push(X,Y-1)}
+  const soft=th*.5+8;
+  for(let Y=0;Y<hh;Y++)for(let X=0;X<w;X++){
+    const p=Y*w+X;
+    if(seen[p]){px[p*4+3]=0;continue}
+    const nb=(X>0&&seen[p-1])||(X<w-1&&seen[p+1])||(Y>0&&seen[p-w])||(Y<hh-1&&seen[p+w]);
+    if(nb){const dd=dist(p*4);if(dd<th+soft)px[p*4+3]=Math.round(px[p*4+3]*clamp((dd-th)/soft,0,1))}
+  }
+  x.putImageData(d,0,0);
+  return{url:c.toDataURL('image/png'),w,h:hh};
+}
+function faceImage(it){
+  const im=IMGS[it.img];if(!im)return null;if(!it.keyOn)return im;
+  const k=`${it.img}|${it.keyColor}|${it.keyTol}`;
+  if(KEYC[k])return KEYC[k];
+  if(!KEYP.has(k)){
+    const p=makeKeyed(it.img,it.keyColor,it.keyTol).then(r=>{
+      if(Object.keys(KEYC).length>24)for(const o in KEYC)delete KEYC[o];
+      KEYC[k]=r;KEYP.delete(k);itemEls.forEach(r=>r.sig='');renderItems();
+    }).catch(()=>KEYP.delete(k));
+    KEYP.set(k,p);
+  }
+  return im;
+}
+async function sampleCorner(it){
+  const im=IMGS[it.img];if(!im)return null;
+  const el=await decodeImg(im.url),c=document.createElement('canvas');c.width=c.height=1;
+  const x=c.getContext('2d');x.drawImage(el,0,0,1,1,0,0,1,1);const[r,g,b,a]=x.getImageData(0,0,1,1).data;
+  return a<10?null:rgbToHex(r,g,b);
+}
 function buildFace(it){
   const bw=it.shape==='none'?0:it.bw,W=it.w-2*bw,H=it.h-2*bw;
   const rad=it.shape==='circle'?'50%':it.shape==='round'?'22%':'0';
   const outer=h('div',{style:{width:it.w+'px',height:it.h+'px',padding:bw+'px',background:bw?it.bc:'transparent',borderRadius:rad,
-    boxShadow:it.shadow?'0 4px 12px rgba(0,0,0,.28)':'none'}});
+    boxShadow:it.shadow&&it.shape!=='none'?'0 4px 12px rgba(0,0,0,.28)':'none'}});
   const inner=h('div',{style:{width:W+'px',height:H+'px',borderRadius:rad}});
-  const im=IMGS[it.img];
+  const im=faceImage(it);
   if(im){
     const sc=(it.shape==='none'?Math.min(W/im.w,H/im.h):Math.max(W/im.w,H/im.h))*it.zoom,iw=im.w*sc,ih=im.h*sc;
     Object.assign(inner.style,{backgroundImage:`url("${im.url}")`,backgroundRepeat:'no-repeat',backgroundSize:`${iw}px ${ih}px`,
@@ -374,15 +421,15 @@ function buildBubble(it,wrap){
   };
   const pad=bw+6,minX=Math.min(0,tx)-pad,minY=Math.min(0,ty)-pad,maxX=Math.max(w,tx)+pad,maxY=Math.max(hh,ty)+pad;
   const svg=document.createElementNS(NS,'svg');
-  svg.setAttribute('width',maxX-minX);svg.setAttribute('height',maxY-minY);svg.setAttribute('viewBox',`${minX} ${minY} ${maxX-minX} ${maxY-minY}`);
-  Object.assign(svg.style,{position:'absolute',left:minX+'px',top:minY+'px',overflow:'visible'});
-  shapeEls(it.bc,it.bc,bw*2).forEach(e=>svg.append(e));
-  shapeEls(it.bg,null).forEach(e=>svg.append(e));
-  wrap.append(svg);
-  const padTxt=it.shape==='oval'||it.shape==='shout'?'14% 12%':'12px 16px';
-  wrap.append(h('div',{style:{position:'absolute',left:0,top:0,width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',textAlign:'center',
-    padding:padTxt,fontSize:it.size+'px',lineHeight:1.35,color:it.color,whiteSpace:'pre-wrap',overflowWrap:'anywhere',...fontCss(it.font,it.bold)}},
-    h('span',{},it.text||' ')));
+  svg.setAttribute('width',maxX-minX);svg.setAttribute('height',maxY-minY);
+  svg.style.display='block';
+  const g=document.createElementNS(NS,'g');g.setAttribute('transform',`translate(${-minX} ${-minY})`);svg.append(g);
+  shapeEls(it.bc,it.bc,bw*2).forEach(e=>g.append(e));
+  shapeEls(it.bg,null).forEach(e=>g.append(e));
+  wrap.append(h('div',{style:{position:'absolute',left:minX+'px',top:minY+'px',width:(maxX-minX)+'px',height:(maxY-minY)+'px'}},svg));
+  const tw=Math.round(w*(it.shape==='round'?.9:.74));
+  wrap.append(h('div',{style:{position:'absolute',left:'50%',top:'50%',width:tw+'px',transform:'translate(-50%,-50%)',textAlign:'center',
+    fontSize:it.size+'px',lineHeight:1.35,color:it.color,whiteSpace:'pre-wrap',overflowWrap:'anywhere',...fontCss(it.font,it.bold)}},it.text||' '));
 }
 function buildContent(el,it){
   el.innerHTML='';
@@ -490,7 +537,7 @@ const TEXT_PRESETS={
 const newText=o=>({type:'text',w:300,text:'ここに説明を入力',font:'gothic',size:32,align:'center',pad:10,...TEXT_PRESETS.outline,...o});
 const newBubble=o=>({type:'bubble',w:260,h:130,text:'セリフ',shape:'oval',tail:'tri',tx:-50,ty:110,font:'handpop',size:30,bold:false,color:'#222222',bg:'#ffffff',bc:'#222222',bw:4,...o});
 const PH=['#f4a6c0','#9fd3f5','#b9e3a5','#f7c98b','#c9b3f0','#f59c9c'];
-const newFace=o=>({type:'face',w:170,h:170,img:null,shape:'circle',zoom:1,ox:0,oy:0,bw:6,bc:'#ffffff',shadow:true,label:'',lsize:22,ph:PH[Math.floor(rnd(0,PH.length))],...o});
+const newFace=o=>({type:'face',w:170,h:170,img:null,shape:'circle',zoom:1,ox:0,oy:0,bw:6,bc:'#ffffff',shadow:true,keyOn:false,keyColor:'#ffffff',keyTol:25,label:'',lsize:22,ph:PH[Math.floor(rnd(0,PH.length))],...o});
 function addQuadTexts(){
   pushUndo();
   [[286,493],[714,493],[286,920],[714,920]].forEach(([x,y])=>{const it={id:S.nid++,rot:0,cx:x,cy:y,...newText({w:300,size:26,...TEXT_PRESETS.dark})};S.items.push(it);sel=it.id});
@@ -558,6 +605,16 @@ const section=(k,title,...kids)=>{const d=h('details',{},h('summary',{},title),.
 function buildPanels(){
   const side=$('#side'),top=side.scrollTop;side.innerHTML='';
   const rerender=()=>{renderBg();renderChrome()};
+  /* マイテンプレ */
+  const nameIn=h('input',{type:'text',placeholder:'テンプレの名前',value:tplName});nameIn.oninput=()=>{tplName=nameIn.value};
+  const faceChk=h('input',{type:'checkbox'});faceChk.checked=tplFaces;faceChk.onchange=()=>{tplFaces=faceChk.checked};
+  side.append(section('tpl','マイテンプレ',
+    h('div',{class:'hint'},'背景・タイトル・ラベル・配置したものを、このブラウザの中に最大10件まで保存できます。 ',h('b',{id:'tplCount'},'')),
+    h('div',{class:'f'},h('label',{},'名前'),nameIn),
+    h('div',{class:'f'},h('label',{},'顔アイコン'),h('label',{style:{fontSize:'13px'}},faceChk,' 含めて保存する')),
+    h('div',{class:'row'},h('button',{onclick:()=>tplSave(null)},'いまの状態を新しく保存')),
+    h('div',{id:'tplList',class:'tpls'})));
+  refreshTpl();
   /* 背景 */
   const baseIn=h('input',{type:'color',value:S.baseColor});
   baseIn.onchange=()=>{S.baseColor=baseIn.value;doGen(()=>genFromBase(S.baseColor))};
@@ -634,7 +691,16 @@ function renderInspector(){
       F('range','ズーム',it,'zoom',{min:.5,max:4,step:.05,fmt:v=>v.toFixed(2)+'×'},ch),
       F('range','横位置',it,'ox',{min:-100,max:100},ch),F('range','縦位置',it,'oy',{min:-100,max:100},ch),
       F('range','枠の太さ',it,'bw',{min:0,max:20},ch),F('color','枠の色',it,'bc',{},ch),
-      F('check','影',it,'shadow',{},ch));
+      F('check','影',it,'shadow',{},ch),
+      h('div',{class:'sub'},'背景を透明にする'),
+      F('check','透明にする',it,'keyOn',{},v=>{
+        if(v){it.shape='none';it.shadow=false;sampleCorner(it).then(c=>{if(c)it.keyColor=c;renderItems();renderInspector()})}
+        else{renderItems();renderInspector()}}),
+      ...(it.keyOn?[
+        F('color','抜く色',it,'keyColor',{},ch),
+        h('div',{class:'row'},h('button',{onclick:async()=>{const c=await sampleCorner(it);if(c){pushUndo();it.keyColor=c;renderItems();renderInspector();sched()}else toast('左上がすでに透明です')}},'左上の色を取る')),
+        F('range','ゆるさ',it,'keyTol',{min:0,max:100},ch),
+        h('div',{class:'hint'},'画像の外側につながった同じ色だけを透明にします。縁に白が残るときは「ゆるさ」を上げてください。')]:[]));
   }else if(it.type==='text'){
     box.append(F('area','文字',it,'text',{},ch),
       h('div',{class:'chips'},Object.entries(TEXT_PRESETS).map(([k,p])=>h('button',{class:'chip',onclick:()=>{
@@ -656,6 +722,65 @@ function renderInspector(){
   box.append(F('range','回転',it,'rot',{min:-180,max:180,fmt:v=>v+'°'},ch));
 }
 
+/* ============ マイテンプレ（IndexedDB・最大10件） ============ */
+const TPL_MAX=10;
+const tplDb=()=>new Promise((res,rej)=>{
+  if(!window.indexedDB){rej(new Error('noidb'));return}
+  const r=indexedDB.open('uchiyoso-cross',1);
+  r.onupgradeneeded=()=>r.result.createObjectStore('tpl',{keyPath:'id'});
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);
+});
+const tplTx=async(mode,fn)=>{const db=await tplDb();return new Promise((res,rej)=>{const t=db.transaction('tpl',mode),rq=fn(t.objectStore('tpl'));t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error)})};
+const tplAll=async()=>((await tplTx('readonly',st=>st.getAll()))||[]).sort((a,b)=>b.updated-a.updated);
+let tplName='',tplFaces=false;
+async function tplSave(id){
+  if(typeof html2canvas==='undefined'){toast('サムネイル作成にオンライン環境が必要です');return}
+  try{
+    const list=await tplAll();
+    const old=id?list.find(t=>t.id===id):null;
+    if(!old&&list.length>=TPL_MAX){toast(`${TPL_MAX}件までです。削除か上書きをしてください`);return}
+    const keep=S.items;
+    const items=JSON.parse(JSON.stringify(tplFaces?keep:keep.filter(i=>i.type!=='face')));
+    S.items=items;renderItems();
+    let thumb;
+    try{const c=await renderCanvas(.3);thumb=c.toDataURL('image/jpeg',.72)}finally{S.items=keep;renderItems()}
+    const st=JSON.parse(JSON.stringify({...S,items}));
+    const used={};items.forEach(i=>{if(i.img&&IMGS[i.img])used[i.img]=IMGS[i.img]});
+    const name=(tplName||'').trim()||(old&&old.name)||S.title||'無題';
+    await tplTx('readwrite',s=>s.put({id:old?old.id:'t'+Date.now().toString(36),name,updated:Date.now(),thumb,S:st,imgs:used}));
+    toast(old?'上書き保存しました':'テンプレに保存しました');refreshTpl();
+  }catch(e){console.error(e);toast('このブラウザでは保存できませんでした')}
+}
+async function tplOpen(id){
+  try{
+    const t=(await tplAll()).find(x=>x.id===id);if(!t)return;
+    pushUndo();Object.assign(IMGS,t.imgs||{});
+    S=Object.assign(defaultState(),JSON.parse(JSON.stringify(t.S)));
+    S.theme=Object.assign(defaultState().theme,S.theme);
+    S.items=S.items.map(i=>i.type==='face'?{keyOn:false,keyColor:'#ffffff',keyTol:25,...i}:i);
+    sel=null;renderAll();buildPanels();sched();toast(`「${t.name}」を開きました（戻すで元に戻せます）`);
+  }catch(e){toast('開けませんでした')}
+}
+async function tplDelete(id,name){
+  if(!confirm(`「${name}」を削除しますか？`))return;
+  try{await tplTx('readwrite',s=>s.delete(id));refreshTpl()}catch(e){toast('削除できませんでした')}
+}
+async function refreshTpl(){
+  const box=$('#tplList');if(!box)return;
+  try{
+    const list=await tplAll();if(!$('#tplList'))return;
+    $('#tplCount').textContent=`${list.length} / ${TPL_MAX}`;
+    box.innerHTML='';
+    if(!list.length)box.append(h('div',{class:'hint'},'まだありません。仕上げた枠を保存すると、ここから開いてキャラを配置できます。'));
+    list.forEach(t=>box.append(h('div',{class:'tpl'},
+      h('img',{src:t.thumb,alt:''}),h('div',{class:'tn',title:t.name},t.name),
+      h('div',{class:'row',style:{margin:'4px 0 0',gap:'4px'}},
+        h('button',{class:'chip',onclick:()=>tplOpen(t.id)},'開く'),
+        h('button',{class:'chip',onclick:()=>tplSave(t.id)},'上書き'),
+        h('button',{class:'chip',onclick:()=>tplDelete(t.id,t.name)},'削除')))));
+  }catch(e){box.textContent='この環境ではテンプレを保存できません（ブラウザの設定をご確認ください）。'}
+}
+
 /* ============ 保存・書き出し ============ */
 function download(blob,name){const a=h('a',{href:URL.createObjectURL(blob),download:name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
 $('#saveJson').onclick=()=>{download(new Blob([JSON.stringify(pack())],{type:'application/json'}),'uchiyoso-cross.json');toast('保存しました')};
@@ -669,25 +794,31 @@ $('#reset').onclick=()=>{if(!confirm('現在の内容を破棄して新規作成
 $('#tipsBtn').onclick=()=>{OPEN.help=true;buildPanels();const d=[...$('#side').querySelectorAll('details')].pop();d.scrollIntoView({behavior:'smooth',block:'start'})};
 $('#undo').onclick=undo;$('#redo').onclick=redo;
 
-async function exportPng(){
-  const btn=$('#exportPng');
-  if(typeof html2canvas==='undefined'){toast('書き出しライブラリを読み込めません（オンライン環境が必要です）');return}
-  btn.disabled=true;btn.textContent='書き出し中…';
+async function renderCanvas(scale){
   const prevSel=sel;sel=null;renderItems();
   let wrap;
   try{
     await document.fonts.ready;
+    await Promise.all([...KEYP.values()]);
     const probes=[...board.querySelectorAll('#chrome>*,#items .item *')].filter(n=>n.childNodes.length&&n.textContent.trim());
     await Promise.all(probes.map(n=>{const cs=getComputedStyle(n);return document.fonts.load(`${cs.fontWeight} 20px ${cs.fontFamily}`,n.textContent).catch(()=>{})}));
     wrap=h('div',{style:{position:'fixed',left:0,top:0,width:BW+'px',height:BH+'px',zIndex:-1,pointerEvents:'none'}});
     const clone=board.cloneNode(true);clone.removeAttribute('id');clone.style.cssText='position:relative;width:1000px;height:1200px;overflow:hidden';
     clone.querySelectorAll('.ui-only').forEach(n=>n.remove());
     wrap.append(clone);document.body.append(wrap);
-    const canvas=await html2canvas(clone,{scale:2,backgroundColor:null,useCORS:true,logging:false,width:BW,height:BH,windowWidth:BW,windowHeight:BH,scrollX:0,scrollY:0});
+    return await html2canvas(clone,{scale,backgroundColor:null,useCORS:true,logging:false,width:BW,height:BH,windowWidth:BW,windowHeight:BH,scrollX:0,scrollY:0});
+  }finally{wrap&&wrap.remove();sel=prevSel;renderItems()}
+}
+async function exportPng(){
+  const btn=$('#exportPng');
+  if(typeof html2canvas==='undefined'){toast('書き出しライブラリを読み込めません（オンライン環境が必要です）');return}
+  btn.disabled=true;btn.textContent='書き出し中…';
+  try{
+    const canvas=await renderCanvas(2);
     await new Promise(r=>canvas.toBlob(b=>{download(b,'uchiyoso-cross.png');r()},'image/png'));
     toast('PNGを書き出しました（2000×2400）');
   }catch(err){console.error(err);toast('書き出しに失敗しました')}
-  finally{wrap&&wrap.remove();btn.disabled=false;btn.textContent='PNGで書き出し';sel=prevSel;renderItems()}
+  finally{btn.disabled=false;btn.textContent='PNGで書き出し'}
 }
 $('#exportPng').onclick=exportPng;
 
